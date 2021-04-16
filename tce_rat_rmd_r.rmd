@@ -1,0 +1,251 @@
+---
+title: "Rat-TCE Study DESeq2"
+author: "Elana Elkin"
+date: "`r Sys.Date()`"
+output:
+    html_document:
+    code_folding: show
+    keep_md: true
+    highlight: tango
+    number_sections: yes
+    theme: sandstone
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = T,
+  tidy    = F,
+  warning = F,
+  message = F,
+  comment = ">>>"
+)
+
+library(DT)
+library(DESeq2)
+library(edgeR)
+library(RUVSeq)
+library(RColorBrewer)
+
+```
+# Read in counts data for all samples
+
+```{r read in counts}
+#setwd("C:/Users/elkin/Desktop/Git_Projects/rat_tce_rnaseq/results")
+load(file="tce_rat_counts.rda")# all samples from merged count files
+dim(all_samples_1_48)
+```
+# Assign metadata to count files
+```{r metadata}
+#setwd("C:/Users/elkin/Desktop/Git_Projects/rat_tce_rnaseq/results")
+meta.rat<-read.csv(file="metadata.csv", stringsAsFactors=F)#load metadata
+counts.rat<-all_samples_1_48[,7:54]#make gene symbols and counts only
+rownames(counts.rat)<-all_samples_1_48[,1]
+colnames(counts.rat)<-meta.rat[,1]
+dim(counts.rat)
+datatable(counts.rat)
+
+```
+# Formatting metadata for DESeq2
+```{r format metadata}
+coldata_48<- read.csv("Coldata_48.txt",header=T,sep="\t",stringsAsFactors=F) #For 48 samples
+dim(coldata_48)
+coldata_48<-data.frame(coldata_48) 
+coldata_48$Sex<-as.factor(coldata_48$Sex)
+coldata_48$Rep<-as.factor(coldata_48$Rep)
+coldata_48$Trt<-as.factor(coldata_48$Trt)
+coldata_48$Trt<-relevel(factor(coldata_48$Trt), ref="C")
+dim(coldata_48)
+head(coldata_48)
+```
+# Creating DESeq2 object with counts data (without RUVr correction)
+```{r create DESeq2 object}
+ds.all<-DESeqDataSetFromMatrix(counts.rat [,1:48],colData=coldata_48,design=~Rep+Trt)
+rownames(ds.all)<-all_samples_1_48[,1]
+```
+# Adding RUV to DEseq object
+```{r Adding RUV to DEseq object}
+ds <- ds.all
+ds$Trt<- as.factor(ds$Trt)
+design(ds) <- ~ Rep + Trt
+set <- newSeqExpressionSet(counts(ds, normalized=F), phenoData=AnnotatedDataFrame(data=as.data.frame(colData(ds))))
+y <- DGEList(counts=counts(ds, normalized=F), group=ds$Trt)
+design <- model.matrix(~ds$Rep+ds$Trt)
+y <- calcNormFactors(y, method="upperquartile")
+y <- estimateGLMCommonDisp(y, design)
+y <- estimateGLMTagwiseDisp(y, design)
+fit <- glmFit(y, design)
+resid <- residuals(fit, type="deviance")
+ruv <- RUVr(x=set, cIdx=rownames(set), k=1, residuals=resid)
+pData(ruv)
+#make deseq new deseq object that has the RUV factors
+ds.all.ruv<- DESeqDataSetFromMatrix(countData = counts(ruv), colData = pData(ruv), 
+                                    design = ~ W_1 + Rep + Trt)
+head(ds.all.ruv)
+```
+# PCA Plots  with RUVr correction
+```{r PCA Plots  with RUVr correction}
+rld.ds.all.ruv<- rlogTransformation(ds.all.ruv) #log transform
+DESeq2::plotPCA(rld.ds.all.ruv, intgroup="Trt")
+DESeq2::plotPCA(rld.ds.all.ruv, intgroup="Rep")
+DESeq2::plotPCA(rld.ds.all.ruv, intgroup="Sex")
+```
+
+```{r  filtering}
+# Manually filtering out genes with count<6 
+keep <- rowMeans(counts(ds.all.ruv)) >= 6
+ds.all.ruv <- ds.all.ruv[keep,]
+dim (ds.all.ruv)
+```
+# Run DEseq2 Analysis with RUV (males)
+
+```{r DEseq2 Analysis with RUV (male)}
+ds.ruv.male<- ds.all.ruv[ , ds.all.ruv$Sex == "M" ] #subsetting DESeq2 object by sex
+head(ds.ruv.male) #confirming male only samples
+ds.ruv.male<- DESeq(ds.ruv.male) # with RUV Does the Empirical Bayes test
+ds.ruv.male<- nbinomWaldTest(ds.ruv.male, maxit=10000) # Corrects Empirical Bayes test warning
+ds.male.ruv.tce<- results(ds.ruv.male, contrast =c("Trt","TCE","C"), independentFiltering = FALSE)# Extract results table
+ds.male.ruv.nac<- results(ds.ruv.male, contrast =c("Trt","NAC","C"), independentFiltering = FALSE) # Extract results table
+ds.male.ruv.tce.nac<- results(ds.ruv.male, contrast =c("Trt","TCE_NAC","C"), independentFiltering = FALSE)# Extract results table
+```
+# Resultss (males)
+```{r results Control v. TCE (male)}
+#Control v. TCE (male)
+mcols(ds.male.ruv.tce)
+summary(ds.male.ruv.tce,alpha=0.05)
+palette <- brewer.pal(4, "Reds")
+par(las = 1, cex.lab = 1.25, cex.main = 1.25)
+with(ds.male.ruv.tce, plot(log2FoldChange, -log10(pvalue), pch=20, main="Rats_Control_vs_TCE_Male.pdf", xlim=c(-9,9),
+                   ylim=c(0,12), xlab =(Log[2]~Fold~Change), ylab=(-Log[10]~Pvalue), col = "black"))
+with(subset(ds.male.ruv.tce, padj<0.05 ), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[4]))
+with(subset(ds.male.ruv.tce, abs(log2FoldChange)>1), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[3]))
+with(subset(ds.male.ruv.tce, padj<0.05 & abs(log2FoldChange)>1), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[5]))
+legend("topleft", col = "black", fill = c(palette[1], palette[2], palette[3], palette[4]), 
+       legend = c("FDR>0.05 and LogFC between -1 & 1" , "FDR>0.05 and LogFC >1  or < -1" , "FDR<0.05 and LogFC between -1 & 1" ,  "FDR<0.05 and LogFC >1  or < -1"))
+abline(h=4.1, col="black", lty=3)
+abline(v=1, col="black", lty=3)
+abline(v=-1, col="black", lty=3)
+```
+
+
+```{r results Control v. NAC (male)}
+#Control v. NAC (male)
+mcols(ds.male.ruv.nac)
+summary(ds.male.ruv.nac,alpha=0.05)
+palette <- brewer.pal(4, "Reds")
+par(las = 1, cex.lab = 1.25, cex.main = 1.25)
+with(ds.male.ruv.nac, plot(log2FoldChange, -log10(pvalue), pch=20, main="Rats_Control_vs_NAC_Male.pdf", xlim=c(-9,9),
+                           ylim=c(0,12), xlab =(Log[2]~Fold~Change), ylab=(-Log[10]~Pvalue), col = "black"))
+with(subset(ds.male.ruv.nac, padj<0.05 ), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[3]))
+with(subset(ds.male.ruv.nac, abs(log2FoldChange)>1), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[2]))
+with(subset(ds.male.ruv.nac, padj<0.05 & abs(log2FoldChange)>1), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[4]))
+legend("topleft", col = "black", fill = c(palette[1], palette[2], palette[3], palette[4]), 
+       legend = c("FDR>0.05 and LogFC between -1 & 1" , "FDR>0.05 and LogFC >1  or < -1" , "FDR<0.05 and LogFC between -1 & 1" ,  "FDR<0.05 and LogFC >1  or < -1"))
+abline(h=5.2, col="black", lty=3)
+abline(v=1, col="black", lty=3)
+abline(v=-1, col="black", lty=3)
+```
+
+```{r results Control v. TCE+NAC (male)}
+#Control v. TCE+NAC (male)
+palette <- brewer.pal(4, "Reds")
+par(las = 1, cex.lab = 1.25, cex.main = 1.25)
+with(ds.male.ruv.tce.nac, plot(log2FoldChange, -log10(pvalue), pch=20, main="Rats_Control_vs_TCE_NAC_Male.pdf", xlim=c(-9,9),
+                           ylim=c(0,12), xlab =(Log[2]~Fold~Change), ylab=(-Log[10]~Pvalue), col = "black"))
+with(subset(ds.male.ruv.tce.nac, padj<0.05 ), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[3]))
+with(subset(ds.male.ruv.tce.nac, abs(log2FoldChange)>1), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[2]))
+with(subset(ds.male.ruv.tce.nac, padj<0.05 & abs(log2FoldChange)>1), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[4]))
+legend("topleft", col = "black", fill = c(palette[1], palette[2], palette[3], palette[4]), 
+       legend = c("FDR>0.05 and LogFC between -1 & 1" , "FDR>0.05 and LogFC >1  or < -1" , "FDR<0.05 and LogFC between -1 & 1" ,  "FDR<0.05 and LogFC >1  or < -1"))
+abline(h=3.6, col="black", lty=3)
+abline(v=1, col="black", lty=3)
+abline(v=-1, col="black", lty=3)
+```
+
+# Run DEseq2 Analysis with RUV (females)
+
+```{r DEseq2 Analysis with RUV (female)}
+ds.ruv.female<- ds.all.ruv[ , ds.all.ruv$Sex == "F" ] #subsetting DESeq2 object by sex
+head(ds.ruv.female) #confirming female only samples
+ds.ruv.female<- DESeq(ds.ruv.female) # with RUV Does the Empirical Bayes test
+ds.ruv.female<- nbinomWaldTest(ds.ruv.female, maxit=10000) # Corrects Empirical Bayes test warning
+ds.female.ruv.tce<- results(ds.ruv.female, contrast =c("Trt","TCE","C"), independentFiltering = FALSE)# Extract results table
+ds.female.ruv.nac<- results(ds.ruv.female, contrast =c("Trt","NAC","C"), independentFiltering = FALSE) # Extract results table
+ds.female.ruv.tce.nac<- results(ds.ruv.female, contrast =c("Trt","TCE_NAC","C"), independentFiltering = FALSE)# Extract results table
+```
+
+# Results (females)
+
+```{r results Control v. TCE (female)}
+#Control v. TCE (female)
+mcols(ds.female.ruv.tce)
+summary(ds.female.ruv.tce,alpha=0.05)
+palette <- brewer.pal(4, "Greens")
+par(las = 1, cex.lab = 1.25, cex.main = 1.25)
+with(ds.female.ruv.tce, plot(log2FoldChange, -log10(pvalue), pch=20, main="Rats_Control_vs_TCE_female.pdf", xlim=c(-9,9),
+                           ylim=c(0,12), xlab =(Log[2]~Fold~Change), ylab=(-Log[10]~Pvalue), col = "black"))
+with(subset(ds.female.ruv.tce, padj<0.05 ), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[3]))
+with(subset(ds.female.ruv.tce, abs(log2FoldChange)>1), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[2]))
+with(subset(ds.female.ruv.tce, padj<0.05 & abs(log2FoldChange)>1), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[4]))
+legend("topleft", col = "black", fill = c(palette[1], palette[2], palette[3], palette[4]), 
+       legend = c("FDR>0.05 and LogFC between -1 & 1" , "FDR>0.05 and LogFC >1  or < -1" , "FDR<0.05 and LogFC between -1 & 1" ,  "FDR<0.05 and LogFC >1  or < -1"))
+abline(h=2.8, col="black", lty=3)
+abline(v=1, col="black", lty=3)
+abline(v=-1, col="black", lty=3)
+```
+
+
+```{r results Control v. NAC (female)}
+#Control v. NAC (female)
+mcols(ds.female.ruv.nac)
+summary(ds.female.ruv.nac,alpha=0.05)
+palette <- brewer.pal(4, "Greens")
+par(las = 1, cex.lab = 1.25, cex.main = 1.25)
+with(ds.female.ruv.nac, plot(log2FoldChange, -log10(pvalue), pch=20, main="Rats_Control_vs_NAC_female.pdf", xlim=c(-9,9),
+                           ylim=c(0,12), xlab =(Log[2]~Fold~Change), ylab=(-Log[10]~Pvalue), col = "black"))
+with(subset(ds.female.ruv.nac, padj<0.05 ), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[3]))
+with(subset(ds.female.ruv.nac, abs(log2FoldChange)>1), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[2]))
+with(subset(ds.female.ruv.nac, padj<0.05 & abs(log2FoldChange)>1), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[4]))
+legend("topleft", col = "black", fill = c(palette[1], palette[2], palette[3], palette[4]), 
+       legend = c("FDR>0.05 and LogFC between -1 & 1" , "FDR>0.05 and LogFC >1  or < -1" , "FDR<0.05 and LogFC between -1 & 1" ,  "FDR<0.05 and LogFC >1  or < -1"))
+abline(h=5.3, col="black", lty=3)
+abline(v=1, col="black", lty=3)
+abline(v=-1, col="black", lty=3)
+```
+
+```=
+#Control v. TCE+NAC (male)
+mcols(ds.female.ruv.tce.nac)
+summary(ds.female.ruv.tce.nac,alpha=0.05)
+palette <- brewer.pal(4, "Greens")
+par(las = 1, cex.lab = 1.25, cex.main = 1.25)
+with(ds.female.ruv.tce.nac, plot(log2FoldChange, -log10(pvalue), pch=20, main="Rats_Control_vs_TCE_NAC_female.pdf", xlim=c(-9,9),
+                               ylim=c(0,12), xlab =(Log[2]~Fold~Change), ylab=(-Log[10]~Pvalue), col = "black"))
+with(subset(ds.female.ruv.tce.nac, padj<0.05 ), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[3]))
+with(subset(ds.female.ruv.tce.nac, abs(log2FoldChange)>1), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[2]))
+with(subset(ds.female.ruv.tce.nac, padj<0.05 & abs(log2FoldChange)>1), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[4]))
+legend("topleft", col = "black", fill = c(palette[1], palette[2], palette[3], palette[4]), 
+       legend = c("FDR>0.05 and LogFC between -1 & 1" , "FDR>0.05 and LogFC >1  or < -1" , "FDR<0.05 and LogFC between -1 & 1" ,  "FDR<0.05 and LogFC >1  or < -1"))
+abline(h=2.75, col="black", lty=3)
+abline(v=1, col="black", lty=3)
+abline(v=-1, col="black", lty=3)
+```
+
+
+# Data Exploration plots
+
+```{r MAplots}
+#MAplots (with RUVr)
+DESeq2::plotMA(ds.male.ruv.tce)
+```
+
+```{r histogram of pvals}
+#histogram of pvals
+hist(ds.male.ruv.tce$pvalue)
+```
+
+```{r dispersion estimate plots}
+#dispersion estimate plots
+plotDispEsts(ds.ruv.male, ylim = c(1e-6, 10e1))
+```
