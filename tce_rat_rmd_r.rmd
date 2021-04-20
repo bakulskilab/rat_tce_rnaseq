@@ -3,15 +3,16 @@ title: "Rat-TCE Study DESeq2"
 author: "Elana Elkin"
 date: "`r Sys.Date()`"
 output:
-    html_document:
-    code_folding: show
-    keep_md: true
-    highlight: tango
-    number_sections: yes
-    theme: sandstone
-    toc: yes
-    toc_depth: 4
-    toc_float: yes
+  html_document: null
+  code_folding: show
+  keep_md: yes
+  highlight: tango
+  number_sections: yes
+  theme: sandstone
+  toc: yes
+  toc_depth: 4
+  toc_float: yes
+  pdf_document: default
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(
@@ -27,6 +28,8 @@ library(DESeq2)
 library(edgeR)
 library(RUVSeq)
 library(RColorBrewer)
+library(gplots)
+library(UpSetR)
 
 ```
 # Read in counts data for all samples
@@ -105,16 +108,41 @@ ds.ruv.male<- ds.all.ruv[ , ds.all.ruv$Sex == "M" ] #subsetting DESeq2 object by
 head(ds.ruv.male) #confirming male only samples
 ds.ruv.male<- DESeq(ds.ruv.male) # with RUV Does the Empirical Bayes test
 ds.ruv.male<- nbinomWaldTest(ds.ruv.male, maxit=10000) # Corrects Empirical Bayes test warning
-ds.male.ruv.tce<- results(ds.ruv.male, contrast =c("Trt","TCE","C"), independentFiltering = FALSE)# Extract results table
-ds.male.ruv.nac<- results(ds.ruv.male, contrast =c("Trt","NAC","C"), independentFiltering = FALSE) # Extract results table
-ds.male.ruv.tce.nac<- results(ds.ruv.male, contrast =c("Trt","TCE_NAC","C"), independentFiltering = FALSE)# Extract results table
+# Extract results tables
+ds.male.ruv.tce<- results(ds.ruv.male, contrast =c("Trt","TCE","C"), independentFiltering = FALSE)
+ds.male.ruv.nac<- results(ds.ruv.male, contrast =c("Trt","NAC","C"), independentFiltering = FALSE)
+ds.male.ruv.tce.nac<- results(ds.ruv.male, contrast =c("Trt","TCE_NAC","C"), independentFiltering = FALSE)
+ds.male.ruv.tce.as.factor<- results(ds.ruv.male, contrast =c("Trt","TCE","C"), independentFiltering = FALSE)
+
+#upset plot show DEG overlap between male treatment groups
+upset<-read.csv(file="genes_upset_plot.csv", stringsAsFactors=F)#load upset.csv
+par(mar=c(4,4,0.5,0.5))
+upset(upset, intersections = list(list("Control_NAC_males"), list("Control_TCE_NAC_males"), list("Control_TCE_males"),
+                                  list("Control_TCE_males", "Control_NAC_males"), 
+                                  list("Control_TCE_males", "Control_TCE_NAC_males"), 
+                                  list("Control_NAC_males", "Control_TCE_NAC_males"),
+                                  list("Control_NAC_males", "Control_TCE_NAC_males", "Control_TCE_males")),
+      matrix.color="black",
+      main.bar.color= "dimgray",
+      order.by = "freq", keep.order = TRUE, text.scale = c(1.0, 1, 0.75, 1, 1, 1),
+      show.numbers = "yes",
+      point.size = 8, line.size = 2, 
+      mb.ratio = c(0.7, 0.3),
+      mainbar.y.label = "Number of Differentially Expressed Genes in Intersection", 
+      sets.x.label = "Number of Differentially Expressed Genes", 
+      sets.bar.color=c("red","maroon","firebrick"), set_size.show = TRUE)
+    
 ```
-# Resultss (males)
+# Results (males)
 ```{r results Control v. TCE (male)}
 #Control v. TCE (male)
 mcols(ds.male.ruv.tce)
 summary(ds.male.ruv.tce,alpha=0.05)
-palette <- brewer.pal(4, "Reds")
+de.control.tce.m.updown <- ds.male.ruv.tce[ds.male.ruv.tce$padj<0.05 & ds.male.ruv.tce$log2FoldChange> 1 | ds.male.ruv.tce$padj<0.05 & ds.male.ruv.tce$log2FoldChange< -1,]
+#ds.male.ruv.tce<- as.data.frame(ds.male.ruv.tce)
+ds.male.ruv.tce$gene <- rownames(ds.male.ruv.tce)
+ds.male.ruv.tce <- ds.male.ruv.tce [,c('gene','log2FoldChange','baseMean','lfcSE', 'stat','pvalue','padj')]
+palette <- brewer.pal(4, "Reds")#
 par(las = 1, cex.lab = 1.25, cex.main = 1.25)
 with(ds.male.ruv.tce, plot(log2FoldChange, -log10(pvalue), pch=20, main="Rats_Control_vs_TCE_Male.pdf", xlim=c(-9,9),
                    ylim=c(0,12), xlab =(Log[2]~Fold~Change), ylab=(-Log[10]~Pvalue), col = "black"))
@@ -133,6 +161,9 @@ abline(v=-1, col="black", lty=3)
 #Control v. NAC (male)
 mcols(ds.male.ruv.nac)
 summary(ds.male.ruv.nac,alpha=0.05)
+#ds.male.ruv.nac<- as.data.frame(ds.male.ruv.nac)
+ds.male.ruv.nac$gene <- rownames(ds.male.ruv.nac)
+ds.male.ruv.nac <- ds.male.ruv.nac [,c('gene','log2FoldChange','baseMean','lfcSE', 'stat','pvalue','padj')]
 palette <- brewer.pal(4, "Reds")
 par(las = 1, cex.lab = 1.25, cex.main = 1.25)
 with(ds.male.ruv.nac, plot(log2FoldChange, -log10(pvalue), pch=20, main="Rats_Control_vs_NAC_Male.pdf", xlim=c(-9,9),
@@ -149,6 +180,12 @@ abline(v=-1, col="black", lty=3)
 
 ```{r results Control v. TCE+NAC (male)}
 #Control v. TCE+NAC (male)
+mcols(ds.male.ruv.tce.nac)
+summary(ds.male.ruv.tce.nac,alpha=0.05)
+de.control.tce.nac.m.updown <- ds.male.ruv.tce.nac[ds.male.ruv.tce$padj<0.05 & ds.male.ruv.tce.nac$log2FoldChange> 1 | ds.male.ruv.tce.nac$padj<0.05 & ds.male.ruv.tce.nac$log2FoldChange< -1,]
+#ds.male.ruv.tce.nac<- as.data.frame(ds.male.ruv.tce.nac)
+ds.male.ruv.tce.nac$gene <- rownames(ds.male.ruv.tce.nac)
+ds.male.ruv.tce.nac <- ds.male.ruv.tce.nac [,c('gene','log2FoldChange','baseMean','lfcSE', 'stat','pvalue','padj')]
 palette <- brewer.pal(4, "Reds")
 par(las = 1, cex.lab = 1.25, cex.main = 1.25)
 with(ds.male.ruv.tce.nac, plot(log2FoldChange, -log10(pvalue), pch=20, main="Rats_Control_vs_TCE_NAC_Male.pdf", xlim=c(-9,9),
@@ -163,6 +200,26 @@ abline(v=1, col="black", lty=3)
 abline(v=-1, col="black", lty=3)
 ```
 
+```{r Correlation Testing- Males}
+cor.test(ds.male.ruv.tce$log2FoldChange,ds.male.ruv.tce.nac$log2FoldChange) 
+cor.test(ds.male.ruv.tce$log2FoldChange,ds.male.ruv.nac$log2FoldChange) 
+cor.test(ds.male.ruv.tce.nac$log2FoldChange,ds.male.ruv.nac$log2FoldChange) 
+
+lm(ds.male.ruv.tce.nac$log2FoldChange~ds.male.ruv.tce$log2FoldChange)#linear regression function lm -Y from smooth scatter first(outcome), then x variable from smooth scatter(predictor)#
+lm(ds.male.ruv.tce.nac$log2FoldChange~ds.male.ruv.nac$log2FoldChange)#linear regression function lm -Y from smooth scatter first(outcome), then x variable from smooth scatter(predictor)#
+
+#Scatter plots
+smoothScatter(ds.male.ruv.tce$log2FoldChange,ds.male.ruv.tce.nac$log2FoldChange, main="Males: [Control vs. TCE+NAC] & [Control vs. TCE]",colramp=colorRampPalette(c("white","red")), cex=3,  xlim = c(-7, 7), ylim = c(-7, 7), xlab="logFC-Control vs. TCE", ylab ="logFC-TCE+NAC-male")
+abline(v = 0, col="gray40")
+abline(h = 0, col="gray40")
+abline(lm (ds.male.ruv.tce$log2FoldChange~ds.male.ruv.tce.nac$log2FoldChange), col="red",lwd=c(2,3))
+
+smoothScatter(ds.male.ruv.tce.nac$log2FoldChange,ds.male.ruv.nac$log2FoldChange,main="Males: [Control vs. TCE+NAC] & [Control vs. NAC]", colramp=colorRampPalette(c("white","red")), cex=3,  xlim = c(-7, 7), ylim = c(-7, 7), xlab="logFC-TCE-male", ylab ="logFC-TCE+NAC-male")
+abline(v = 0, col="gray40")
+abline(h = 0, col="gray40")
+abline(lm (ds.male.ruv.tce.nac$log2FoldChange~ds.male.ruv.nac$log2FoldChange), col="red",lwd=c(2,3))
+```
+
 # Run DEseq2 Analysis with RUV (females)
 
 ```{r DEseq2 Analysis with RUV (female)}
@@ -170,9 +227,27 @@ ds.ruv.female<- ds.all.ruv[ , ds.all.ruv$Sex == "F" ] #subsetting DESeq2 object 
 head(ds.ruv.female) #confirming female only samples
 ds.ruv.female<- DESeq(ds.ruv.female) # with RUV Does the Empirical Bayes test
 ds.ruv.female<- nbinomWaldTest(ds.ruv.female, maxit=10000) # Corrects Empirical Bayes test warning
+ds.ruv.female[is.na(ds.ruv.female)] <- 0
 ds.female.ruv.tce<- results(ds.ruv.female, contrast =c("Trt","TCE","C"), independentFiltering = FALSE)# Extract results table
 ds.female.ruv.nac<- results(ds.ruv.female, contrast =c("Trt","NAC","C"), independentFiltering = FALSE) # Extract results table
 ds.female.ruv.tce.nac<- results(ds.ruv.female, contrast =c("Trt","TCE_NAC","C"), independentFiltering = FALSE)# Extract results table
+#upset plot show DEG overlap betweeen female treatment groups
+par(mar=c(4,4,0.5,0.5))
+upset(upset, intersections = list(list("Control_NAC_females"), list("Control_TCE_NAC_females"), list("Control_TCE_females"),
+                                  list("Control_TCE_females", "Control_NAC_females"), 
+                                  list("Control_TCE_females", "Control_TCE_NAC_females"), 
+                                  list("Control_NAC_females", "Control_TCE_NAC_females"),
+                                  list("Control_NAC_females", "Control_TCE_NAC_females", "Control_TCE_females")),
+      matrix.color="black",
+      main.bar.color= "dimgray",
+      order.by = "freq", keep.order = TRUE, text.scale = c(1.0, 1, 0.75, 1, 1, 1),
+      show.numbers = "no",
+      point.size = 8, line.size = 2, 
+      mb.ratio = c(0.7, 0.3),
+      mainbar.y.label = "Number of Differentially Expressed Genes in Intersection", 
+      sets.x.label = "Number of Differentially Expressed Genes in Intersection", 
+      sets.bar.color=c("chartreuse2","chartreuse3","chartreuse4"), set_size.show = TRUE,
+      set_size.scale_max = 175)
 ```
 
 # Results (females)
@@ -181,6 +256,10 @@ ds.female.ruv.tce.nac<- results(ds.ruv.female, contrast =c("Trt","TCE_NAC","C"),
 #Control v. TCE (female)
 mcols(ds.female.ruv.tce)
 summary(ds.female.ruv.tce,alpha=0.05)
+#ds.female.ruv.tce<- as.data.frame(ds.female.ruv.tce)
+ds.female.ruv.tce$gene <- rownames(ds.female.ruv.tce)
+ds.female.ruv.tce <- ds.female.ruv.tce [,c('gene','log2FoldChange','baseMean','lfcSE', 'stat','pvalue','padj')]
+
 palette <- brewer.pal(4, "Greens")
 par(las = 1, cex.lab = 1.25, cex.main = 1.25)
 with(ds.female.ruv.tce, plot(log2FoldChange, -log10(pvalue), pch=20, main="Rats_Control_vs_TCE_female.pdf", xlim=c(-9,9),
@@ -200,6 +279,9 @@ abline(v=-1, col="black", lty=3)
 #Control v. NAC (female)
 mcols(ds.female.ruv.nac)
 summary(ds.female.ruv.nac,alpha=0.05)
+#ds.female.ruv.nac<- as.data.frame(ds.female.ruv.nac)
+ds.female.ruv.nac$gene <- rownames(ds.female.ruv.nac)
+ds.female.ruv.nac <- ds.female.ruv.nac [,c('gene','log2FoldChange','baseMean','lfcSE', 'stat','pvalue','padj')]
 palette <- brewer.pal(4, "Greens")
 par(las = 1, cex.lab = 1.25, cex.main = 1.25)
 with(ds.female.ruv.nac, plot(log2FoldChange, -log10(pvalue), pch=20, main="Rats_Control_vs_NAC_female.pdf", xlim=c(-9,9),
@@ -213,14 +295,17 @@ abline(h=5.3, col="black", lty=3)
 abline(v=1, col="black", lty=3)
 abline(v=-1, col="black", lty=3)
 ```
-
-```=
-#Control v. TCE+NAC (male)
+```{r results Control v. TCE+NAC (female)}
+#Control v. TCE+NAC (female)
 mcols(ds.female.ruv.tce.nac)
 summary(ds.female.ruv.tce.nac,alpha=0.05)
 palette <- brewer.pal(4, "Greens")
+#ds.female.ruv.tce.nac<- as.data.frame(ds.female.ruv.tce.nac)
+ds.female.ruv.tce.nac$gene <- rownames(ds.female.ruv.tce.nac)
+ds.female.ruv.tce.nac <- ds.female.ruv.tce.nac [,c('gene','log2FoldChange','baseMean','lfcSE', 'stat','pvalue','padj')]
+dim(ds.female.ruv.tce.nac)
 par(las = 1, cex.lab = 1.25, cex.main = 1.25)
-with(ds.female.ruv.tce.nac, plot(log2FoldChange, -log10(pvalue), pch=20, main="Rats_Control_vs_TCE_NAC_female.pdf", xlim=c(-9,9),
+with(ds.female.ruv.tce.nac, plot(log2FoldChange, -log10(pvalue), pch=20, main="Rats_Control_vs_TCE_NAC_female", xlim=c(-9,9),
                                ylim=c(0,12), xlab =(Log[2]~Fold~Change), ylab=(-Log[10]~Pvalue), col = "black"))
 with(subset(ds.female.ruv.tce.nac, padj<0.05 ), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[3]))
 with(subset(ds.female.ruv.tce.nac, abs(log2FoldChange)>1), points(log2FoldChange, -log10(pvalue), pch=20, col=palette[2]))
@@ -231,13 +316,59 @@ abline(h=2.75, col="black", lty=3)
 abline(v=1, col="black", lty=3)
 abline(v=-1, col="black", lty=3)
 ```
+```{r Correlation Testing-Females}
+cor.test(ds.female.ruv.tce$log2FoldChange,ds.female.ruv.tce.nac$log2FoldChange)
+cor.test(ds.female.ruv.tce$log2FoldChange,ds.female.ruv.nac$log2FoldChange)
+cor.test(ds.female.ruv.nac$log2FoldChange,ds.female.ruv.tce.nac$log2FoldChange)
+lm(ds.female.ruv.tce.nac$log2FoldChange~ds.female.ruv.tce$log2FoldChange)#linear regression function lm -Y from smooth scatter first(outcome), then x variable from smooth scatter(predictor)#
+lm(ds.female.ruv.tce.nac$log2FoldChange~ds.female.ruv.nac$log2FoldChange)#linear regression function lm -Y from smooth scatter first(outcome), then x variable from smooth scatter(predictor)#
 
+smoothScatter(ds.female.ruv.tce$log2FoldChange,ds.female.ruv.tce.nac$log2FoldChange,  main="Females: [Control vs. TCE+NAC] & [Control vs. TCE]", colramp=colorRampPalette(c("white","green")), cex=3,  xlim = c(-7, 7), ylim = c(-7, 7), xlab="logFC-TCE-male", ylab ="logFC-TCE+NAC-male")
+abline(v = 0, col="gray40")
+abline(h = 0, col="gray40")
+abline(lm (ds.female.ruv.tce$log2FoldChange~ds.female.ruv.tce.nac$log2FoldChange), col="red",lwd=c(2,3))
+identify(ds.female.ruv.tce$log2FoldChange,ds.female.ruv.tce.nac$log2FoldChange, row.names(ds.male.ruv.tce), pos = 1, cex=0.8, font=4)
 
+smoothScatter(ds.female.ruv.tce.nac$log2FoldChange,ds.female.ruv.nac$log2FoldChange,  main="Females: [Control vs. TCE+NAC] & [Control vs. NAC]", colramp=colorRampPalette(c("white","green")), cex=3,  xlim = c(-7, 7), ylim = c(-7, 7), xlab="logFC-TCE-female", ylab ="logFC-TCE+NAC-female")
+abline(v = 0, col="gray40")
+abline(h = 0, col="gray40")
+abline(lm (ds.female.ruv.tce.nac$log2FoldChange~ds.female.ruv.nac$log2FoldChange), col="red",lwd=c(2,3))
+identify(ds.female.ruv.tce.nac$log2FoldChange,ds.female.ruv.nac$log2FoldChange, row.names(ds.male.ruv.tce), pos = 1, cex=0.8, font=4)
+
+#male versus female
+cor.test(ds.male.ruv.tce$log2FoldChange,ds.female.ruv.tce$log2FoldChange) #.49
+cor.test(ds.male.ruv.nac$log2FoldChange,ds.female.ruv.nac$log2FoldChange)#.21
+cor.test(ds.male.ruv.tce.nac$log2FoldChange,ds.female.ruv.tce.nac$log2FoldChange)#.56
+```
 # Data Exploration plots
 
-```{r MAplots}
+```{r Heatmap Top 149 genes based on logFC -1 < or > 1 }
+top<-read.csv(file="top_heatmap.csv", stringsAsFactors=F)
+top_genes<-read.csv(file="top_heatmap_genes.csv", stringsAsFactors=F)
+rownames(top)<-top_genes[,1]
+top<-data.matrix(top)
+
+mycrs <- colorRampPalette(c("purple1", "mediumpurple1", "white", "steelblue1","blue"))(n = 2000)
+palette <- brewer.pal(9, "RdBu")
+grid <- par(mfrow=c(4, 5))
+par(grid)
+heatmap.2(top,
+          Colv=FALSE,
+          main="Pathways-Top genes",
+          trace='none',
+          labRow=FALSE,
+          cexCol=0.6,
+          key.xlab= 'Log2Fold Change',
+          density.info = 'none',
+          margins = c(5,5),
+          col=mycrs)
+```
+
+
+```{r MAplots (examples with Control v. TCE+NAC-male)}
 #MAplots (with RUVr)
-DESeq2::plotMA(ds.male.ruv.tce)
+ds.male.ruv.tce.as.factor.maplot<- as.data.frame(ds.male.ruv.tce.as.factor)
+DESeq2::plotMA(ds.male.ruv.tce.as.factor)
 ```
 
 ```{r histogram of pvals}
@@ -249,3 +380,110 @@ hist(ds.male.ruv.tce$pvalue)
 #dispersion estimate plots
 plotDispEsts(ds.ruv.male, ylim = c(1e-6, 10e1))
 ```
+```{r converting data to dataframes}
+ds.male.ruv.tce.as.factor<- as.data.frame(ds.male.ruv.tce)
+ds.male.ruv.tce.as.factor$gene <- rownames(ds.male.ruv.tce.as.factor)
+ds.male.ruv.tce.as.factor <- ds.male.ruv.tce.as.factor [,c('gene','log2FoldChange','baseMean','lfcSE', 'stat','pvalue','padj')]
+
+ds.male.ruv.nac.as.factor<- as.data.frame(ds.male.ruv.nac)
+ds.male.ruv.nac.as.factor$gene <- rownames(ds.male.ruv.nac.as.factor)
+ds.male.ruv.nac.as.factor <- ds.male.ruv.nac.as.factor [,c('gene','log2FoldChange','baseMean','lfcSE', 'stat','pvalue','padj')]
+
+ds.male.ruv.tce.nac.as.factor<- as.data.frame(ds.male.ruv.tce.nac)
+ds.male.ruv.tce.nac.as.factor$gene <- rownames(ds.male.ruv.tce.nac.as.factor)
+ds.male.ruv.tce.nac.as.factor <- ds.male.ruv.tce.nac.as.factor [,c('gene','log2FoldChange','baseMean','lfcSE', 'stat','pvalue','padj')]
+
+ds.female.ruv.tce.as.factor<- as.data.frame(ds.female.ruv.tce)
+ds.female.ruv.tce.as.factor$gene <- rownames(ds.female.ruv.tce.as.factor)
+ds.female.ruv.tce.as.factor <- ds.female.ruv.tce.as.factor [,c('gene','log2FoldChange','baseMean','lfcSE', 'stat','pvalue','padj')]
+ds.female.ruv.tce.as.factor[is.na(ds.female.ruv.tce.as.factor)] <- 0
+
+ds.female.ruv.nac.as.factor<- as.data.frame(ds.female.ruv.nac)
+ds.female.ruv.nac.as.factor$gene <- rownames(ds.female.ruv.nac.as.factor)
+ds.female.ruv.nac.as.factor <- ds.female.ruv.nac.as.factor [,c('gene','log2FoldChange','baseMean','lfcSE', 'stat','pvalue','padj')]
+ds.female.ruv.nac.as.factor[is.na(ds.female.ruv.nac.as.factor)] <- 0
+
+ds.female.ruv.tce.nac.as.factor<- as.data.frame(ds.female.ruv.tce.nac)
+ds.female.ruv.tce.nac.as.factor$gene <- rownames(ds.female.ruv.tce.nac.as.factor)
+ds.female.ruv.tce.nac.as.factor <- ds.female.ruv.tce.nac.as.factor [,c('gene','log2FoldChange','baseMean','lfcSE', 'stat','pvalue','padj')]
+ds.female.ruv.tce.nac.as.factor[is.na(ds.female.ruv.tce.nac.as.factor)] <- 0
+```
+
+#Enrichment testing of transcription factor gene targets (For DE genes FDR<0.05)
+
+```{r ATF6 Gene Targets}
+
+#generate list of deferentially expression genes meeting FDR<0.05 criterion
+de.control.tce.m <-ds.male.ruv.tce.as.factor [ds.male.ruv.tce.as.factor$padj<0.05,]# TCE-male
+de.control.tce.nac.m <-ds.male.ruv.tce.as.factor [ds.male.ruv.tce.nac.as.factor$padj<0.05,] #TCE+NAC-male
+de.control.tce.f <-ds.female.ruv.tce.as.factor [ds.female.ruv.tce.as.factor$padj<0.05,] ##TCE+NAC-female
+de.control.tce.nac.f <-ds.female.ruv.tce.as.factor [ds.female.ruv.tce.nac.as.factor$padj<0.05,] ##TCE+NAC-female
+#note: nac groups did not have any DE genes meeting FDR<0.05 criterion
+
+#load ATF6 gene targets
+atf6<-read.csv(file="ATF6_targets.csv", stringsAsFactors=F)#load ATF6 mouse chipseq from Han et al.
+dim(atf6) # number of ATF 6 gene targets
+#phyper hypergeomentric testing
+#q=intersect; m=#of signficant DE genes; n=[total # filterd genes-#of DE expressed genes] k=# of ATF6  only genes
+
+#ATF6 overlapping gene targets with differentially expressed genes meeting FDR<0.05 criteria
+intersect(atf6$gene, de.control.tce.m$gene) # TCE-male v ATF6
+length(intersect(atf6$gene, de.control.tce.m$gene)) #number of overlap genes
+phyper(4, 30, 16331, 139, lower.tail= FALSE)#pval
+
+intersect(atf6$gene, de.control.tce.nac.m$gene) #TCE+NAC -male v ATF6
+length(intersect(atf6$gene, de.control.tce.nac.m$gene))#number of overlap genes
+phyper(5, 68, 16148, 139, lower.tail= FALSE)#pval
+
+intersect(atf6$gene, de.control.tce.f$gene)  # TCE-female v ATF6
+length(intersect(atf6$gene, de.control.tce.f$gene))#number of overlap genes
+phyper(17, 479, 16179, 139, lower.tail= FALSE)#pval
+
+intersect(atf6$gene, de.control.tce.nac.f$gene) # ## TCE+NAC-female v ATF6
+length(intersect(atf6$gene, de.control.tce.nac.f$gene))#number of overlap genes
+phyper(10, 513, 16148, 139, lower.tail= FALSE)#pval
+
+```
+
+
+```{r ATF4 Gene Targets}
+han<-read.csv(file="human.allatf4.csv", stringsAsFactors=F)#load ATF4 mouse chipseq from Han et al.
+
+intersect(han$Geneid, de.control.tce.m$gene) # TCE-male v ATF4
+length(intersect(han$Geneid, de.control.tce.m$gene)) #number of overlap genes
+phyper(2, 30, 16331, 383, lower.tail= FALSE)##pval
+
+intersect(han$Geneid, de.control.tce.nac.m$gene) #TCE+NAC -male v ATF4
+length(intersect(han$Geneid, de.control.tce.nac.m$gene))#number of overlap genes
+phyper(3, 68, 16593, 383, lower.tail= FALSE)##pval
+
+intersect(han$Geneid, de.control.tce.f$gene)  # TCE-female v ATF4
+length(intersect(han$Geneid, de.control.tce.f$gene))#number of overlap genes
+phyper(7, 482, 16176, 383, lower.tail= FALSE)##pval
+
+intersect(han$Geneid, de.control.tce.nac.f$gene) # ## TCE+NAC-female v ATF4
+length(intersect(han$Geneid, de.control.tce.nac.f$gene))#number of overlap genes
+phyper(15, 513, 16148, 383, lower.tail= FALSE)#pval
+
+```
+
+```{r XBP1 Gene Targets}
+xbp1<-read.csv(file="xbp1.csv", stringsAsFactors=F)#load XBP1 gene targets
+
+intersect(xbp1$gene, de.control.tce.m$gene) # TCE-male v XBP1
+length(intersect(xbp1$gene, de.control.tce.m$gene)) #number of overlap genes
+phyper(0, 30, 16331, 132, lower.tail= FALSE)##pval
+
+intersect(xbp1$gene, de.control.tce.nac.m$gene) #TCE+NAC -male v XBP1
+length(intersect(xbp1$gene, de.control.tce.nac.m$gene))#number of overlap genes
+phyper(1, 68, 16593, 132, lower.tail= FALSE)##pval
+
+intersect(xbp1$gene, de.control.tce.f$gene)  # TCE-female v XBP1
+length(intersect(xbp1$gene, de.control.tce.f$gene))#number of overlap genes
+phyper(7, 482, 16176, 132, lower.tail= FALSE)##pval
+
+intersect(xbp1$gene, de.control.tce.nac.f$gene) # ## TCE+NAC-female v XBP1
+length(intersect(xbp1$gene, de.control.tce.nac.f$gene))#number of overlap genes
+phyper(1, 68, 16593, 132, lower.tail= FALSE)#pval
+```
+
