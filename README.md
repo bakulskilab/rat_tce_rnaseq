@@ -1,7 +1,7 @@
 # Sexually concordant and dimorphic transcriptional responses to maternal trichloroethylene and/or N-acetyl cysteine exposure in Wistar rat placental tissue
 
 ## Citation Information
-Elkin ER, Su AL, Dou JF, Colacino JA, Bridges D, Padmanabhan V, Harris SM, Boldenow E, Loch-Caruso R, Bakulski KM. 2023. Sexually-concordant and dimorphic transcriptional responses to maternal trichloroethylene and/or n-acetyl cysteine exposure in Wistar rat placental tissue. Toxicology. PMID: 36396003, PMCID: pending. 10.1016/j.tox.2022.153371
+Elkin ER, Su AL, Dou JF, Colacino JA, Bridges D, Padmanabhan V, Harris SM, Boldenow E, Loch-Caruso R, Bakulski KM. 2023. Sexually-concordant and dimorphic transcriptional responses to maternal trichloroethylene and/or n-acetyl cysteine exposure in Wistar rat placental tissue. Toxicology. PMID: 36396003, PMCID: pending. DOI: 10.1016/j.tox.2022.153371
 
 This Github repository contains the data management and analytic scripts to produce the following manuscript: [Sexually concordant and dimorphic transcriptional responses to maternal trichloroethylene and/or N-acetyl cysteine exposure in Wistar rat placental tissue](https://pubmed.ncbi.nlm.nih.gov/36396003/)
 
