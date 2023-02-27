@@ -15,3 +15,20 @@ This work was supported by the National Institute of Environmental Health Scienc
 RNA-seq fastq and featureCount files are publicly available for download at SRA. Gene Expression Omnibus (GEO) accession number: [GSE168232](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE168232). 
 
 ## Script Files
+*tce_rat_rmd_r_files* contains the result plots in this project
+
+ATF6_targets.csv: containing description of target genes
+
+Coldata_48.txt: containing demographic information of samples
+
+genes_upset_plot.csv: data for upset plot
+
+metadata.csv: containing metadata of samples
+
+tce_rat_counts.rda: gene raw count data
+
+top_heatmap_genes.csv: top genes in heatmap
+
+xbp1.csv: gene description
+
+tce_rat_rmd_r.rmd: data cleaning, differential gene expression analysis, enrichment test, and result plotting
